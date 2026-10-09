@@ -18,6 +18,7 @@
   let suppressClick = false;
   let swaps = 0;
   let seed = 0;
+  let customCards = null;
   let solverBest = null;
   let solverScore = 0;
   let busy = false;
@@ -47,6 +48,7 @@
 
   function deal(newSeed) {
     seed = newSeed >>> 0 || 1;
+    customCards = null;
     const random = randomGenerator(seed);
     const deck = fullDeck();
     for (let i = deck.length - 1; i > 0; i--) {
@@ -67,9 +69,10 @@
 
   function cardKey(card) { return `${card.suit}-${card.rank}`; }
 
-  function dealCustom(cards) {
-    seed = ((Math.random() * 0xffffffff) >>> 0) || 1;
-    board = shuffledCopy(cards, randomGenerator(seed));
+  function dealCustom(cards, newSeed) {
+    seed = (newSeed ?? ((Math.random() * 0xffffffff) >>> 0)) >>> 0 || 1;
+    customCards = cards.slice();
+    board = shuffledCopy(customCards, randomGenerator(seed));
     selected = -1;
     swaps = 0;
     solverBest = null;
@@ -113,6 +116,18 @@
     devSelection = new Set(board.map(cardKey));
     renderDevPicker();
     $('dev-dialog').showModal();
+  }
+
+  function openSeedDialog() {
+    if (busy) return;
+    $('seed-input').value = String(seed);
+    $('seed-error').textContent = '';
+    $('seed-description').textContent = customCards
+      ? 'For a custom deal, the same seed shuffles the same selected 25-card set into the same starting grid.'
+      : 'Use the number shown beside YOUR GRID to recreate that standard deal.';
+    $('seed-dialog').showModal();
+    $('seed-input').focus();
+    $('seed-input').select();
   }
 
   function rankLabel(rank) { return rankNames[rank] || String(rank); }
@@ -298,6 +313,7 @@
     busy = true;
     $('solve-button').disabled = true;
     $('new-deal').disabled = true;
+    $('seed-button').disabled = true;
     $('dev-setup-button').disabled = true;
     $('apply-button').hidden = true;
     $('progress-track').hidden = false;
@@ -359,6 +375,7 @@
       busy = false;
       $('solve-button').disabled = false;
       $('new-deal').disabled = false;
+      $('seed-button').disabled = false;
       $('dev-setup-button').disabled = false;
       $('solve-button').innerHTML = '<span>✦</span> Find best arrangement';
     }
@@ -375,6 +392,19 @@
     render();
   });
   $('new-deal').addEventListener('click', () => deal((Math.random() * 0xffffffff) >>> 0));
+  $('seed-button').addEventListener('click', openSeedDialog);
+  $('seed-cancel').addEventListener('click', () => $('seed-dialog').close());
+  $('seed-form').addEventListener('submit', (event) => {
+    event.preventDefault();
+    const value = Number($('seed-input').value);
+    if (!Number.isInteger(value) || value < 1 || value > 0xffffffff) {
+      $('seed-error').textContent = 'Enter a whole number from 1 to 4,294,967,295.';
+      return;
+    }
+    $('seed-dialog').close();
+    if (customCards) dealCustom(customCards, value);
+    else deal(value);
+  });
   $('dev-setup-button').addEventListener('click', openDevSetup);
   $('dev-clear').addEventListener('click', () => {
     devSelection.clear();

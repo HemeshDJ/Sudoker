@@ -26,7 +26,7 @@
 
     <section class="game-layout" aria-label="Sudoker game">
       <div class="board-column">
-        <div class="board-heading"><div><span class="section-label">YOUR GRID</span><span id="seed-label" class="seed-label"></span></div><div class="board-actions"><button class="text-button" id="dev-setup-button">⚙ <span>Dev setup</span></button><button class="text-button" id="new-deal">↻ <span>New deal</span></button></div></div>
+        <div class="board-heading"><div><span class="section-label">YOUR GRID</span><span id="seed-label" class="seed-label"></span></div><div class="board-actions"><button class="text-button" id="dev-setup-button">⚙ <span>Dev setup</span></button><button class="text-button" id="seed-button" title="Enter a deal seed"># <span>Seed</span></button><button class="text-button" id="new-deal">↻ <span>New deal</span></button></div></div>
         <div class="board-wrap">
           <div class="column-hands" id="column-hands" aria-label="Column hand scores"></div>
           <div class="board-row">
@@ -68,7 +68,20 @@
     <p>Each row and each column is a five-card poker hand. Drag one card onto another, or click two cards to swap them. Each card contributes to exactly two hands.</p>
     <p>Hand points equal <b>rank × 100 + the values of the cards making that hand</b>. Kickers do not add points: for example, four 8s with a 10 kicker score 832. A pair is rank 2, three of a kind is 4, a flush is 6, and a royal flush is 10. Face cards are worth 11–14.</p>
     <p>Use the solver to search for a higher total. It returns the strongest arrangement it finds within the selected search effort; the search is heuristic, so it may not prove a mathematically optimal grid.</p>
+    <p>Each deal has a numeric seed shown beside YOUR GRID. Use <b>Seed</b> to enter that number again and recreate the same deal. Custom deals also require the same 25 selected cards.</p>
     <button class="dialog-done" id="close-help">Got it</button>
+  </dialog>
+  <dialog id="seed-dialog" class="seed-dialog">
+    <form method="dialog"><button class="dialog-close" aria-label="Close">×</button></form>
+    <div class="eyebrow">REPLAY A DEAL</div>
+    <h2>Enter a<br><em>deal seed.</em></h2>
+    <p id="seed-description">Use the number shown beside YOUR GRID to recreate that deal.</p>
+    <form id="seed-form" class="seed-form">
+      <label for="seed-input">Seed number</label>
+      <input id="seed-input" type="number" inputmode="numeric" min="1" max="4294967295" step="1" required autocomplete="off">
+      <div id="seed-error" class="seed-error" role="status" aria-live="polite"></div>
+      <div class="seed-actions"><button class="seed-cancel" id="seed-cancel" type="button">Cancel</button><button class="seed-submit" type="submit">Start this deal</button></div>
+    </form>
   </dialog>
   <dialog id="dev-dialog" class="dev-dialog">
     <form method="dialog"><button class="dialog-close" aria-label="Close">×</button></form>

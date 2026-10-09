@@ -16,6 +16,7 @@ The `Deploy GitHub Pages` workflow publishes the static app whenever changes are
 - Each row and column is scored as a five-card poker hand.
 - The hand score is `(hand rank × 100) + the values of the cards making that hand`; kickers do not add points. Card values run from 2 through 14. For example, four 8s with a 10 kicker score 832.
 - Use **New deal** for a random board. The initial board is seeded by the local date, so it stays the same for the day.
+- Use **Seed** to enter a numeric seed and recreate a deal. Custom dev deals also require the same selected 25-card set.
 - Open **Dev setup** to choose exactly 25 cards from a standard deck, then shuffle those selected cards into a custom game.
 - Choose a search effort and run the solver to look for a higher score.
 
