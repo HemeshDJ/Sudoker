@@ -8,7 +8,7 @@ Open `index.html` in a modern browser. There is no build step or dependency inst
 
 ## GitHub Pages
 
-The `Deploy GitHub Pages` workflow publishes the static app whenever changes are pushed to `main`. It can also be started manually from the repository's Actions tab. In the repository settings, set Pages' build source to **GitHub Actions**. The site is served from the repository's project URL.
+The `Deploy GitHub Pages` workflow publishes the static app whenever changes are pushed to `master`. It can also be started manually from the repository's Actions tab. In the repository settings, set Pages' build source to **GitHub Actions**. The site is served from `https://hemeshdj.github.io/Sudoker/`.
 
 ## Play
 
