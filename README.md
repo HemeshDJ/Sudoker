@@ -12,7 +12,7 @@ The `Deploy GitHub Pages` workflow publishes the static app whenever changes are
 
 ## Play
 
-- Click one card, then another, to swap them.
+- Drag one card onto another, or click one card and then another, to swap them.
 - Each row and column is scored as a five-card poker hand.
 - The hand score is `(hand rank × 100) + the values of the cards making that hand`; kickers do not add points. Card values run from 2 through 14. For example, four 8s with a 10 kicker score 832.
 - Use **New deal** for a random board. The initial board is seeded by the local date, so it stays the same for the day.

@@ -14,6 +14,8 @@
   const gridEl = $('card-grid');
   let board = [];
   let selected = -1;
+  let activeDrag = null;
+  let suppressClick = false;
   let swaps = 0;
   let seed = 0;
   let solverBest = null;
@@ -125,10 +127,73 @@
       button.setAttribute('aria-label', `${rankLabel(card.rank)} of ${card.suit}${selected === index ? ', selected' : ''}`);
       button.dataset.index = String(index);
       button.innerHTML = `<span class="card-corner">${rankLabel(card.rank)}<span>${card.symbol}</span></span><span class="card-center">${card.symbol}</span><span class="card-corner bottom">${rankLabel(card.rank)}<span>${card.symbol}</span></span>`;
-      button.addEventListener('click', () => chooseCard(index));
+      button.addEventListener('click', () => {
+        if (suppressClick) return;
+        chooseCard(index);
+      });
       gridEl.append(button);
     });
   }
+
+  function findCardAtPoint(x, y) {
+    const element = document.elementFromPoint(x, y);
+    const card = element?.closest?.('.playing-card');
+    return card && gridEl.contains(card) ? card : null;
+  }
+
+  function clearDragStyles() {
+    gridEl.querySelectorAll('.playing-card.dragging, .playing-card.drop-target').forEach((card) => {
+      card.classList.remove('dragging', 'drop-target');
+    });
+    document.body.classList.remove('card-dragging');
+  }
+
+  gridEl.addEventListener('pointerdown', (event) => {
+    const card = event.target.closest?.('.playing-card');
+    if (!card || busy || (event.pointerType === 'mouse' && event.button !== 0)) return;
+    activeDrag = {
+      index: Number(card.dataset.index),
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      dragging: false
+    };
+  });
+
+  document.addEventListener('pointermove', (event) => {
+    if (!activeDrag || event.pointerId !== activeDrag.pointerId) return;
+    const distance = Math.hypot(event.clientX - activeDrag.startX, event.clientY - activeDrag.startY);
+    if (!activeDrag.dragging && distance >= 7) {
+      activeDrag.dragging = true;
+      gridEl.querySelector(`[data-index="${activeDrag.index}"]`)?.classList.add('dragging');
+      document.body.classList.add('card-dragging');
+    }
+    if (!activeDrag.dragging) return;
+    event.preventDefault();
+    gridEl.querySelectorAll('.playing-card.drop-target').forEach((card) => card.classList.remove('drop-target'));
+    const target = findCardAtPoint(event.clientX, event.clientY);
+    if (target && Number(target.dataset.index) !== activeDrag.index) target.classList.add('drop-target');
+  }, { passive: false });
+
+  document.addEventListener('pointerup', (event) => {
+    if (!activeDrag || event.pointerId !== activeDrag.pointerId) return;
+    const drag = activeDrag;
+    activeDrag = null;
+    if (!drag.dragging) return;
+    const target = findCardAtPoint(event.clientX, event.clientY);
+    clearDragStyles();
+    suppressClick = true;
+    window.setTimeout(() => { suppressClick = false; }, 0);
+    if (!target) return;
+    const targetIndex = Number(target.dataset.index);
+    if (targetIndex !== drag.index) swapCards(drag.index, targetIndex);
+  });
+
+  document.addEventListener('pointercancel', (event) => {
+    if (!activeDrag || event.pointerId !== activeDrag.pointerId) return;
+    activeDrag = null;
+    clearDragStyles();
+  });
 
   function evaluateHand(cards) {
     const ranks = cards.map((card) => card.rank).sort((a, b) => b - a);
@@ -191,14 +256,21 @@
     } else if (selected === index) {
       selected = -1;
     } else {
-      [board[selected], board[index]] = [board[index], board[selected]];
-      selected = -1;
-      swaps++;
-      solverBest = null;
-      $('apply-button').hidden = true;
-      $('solver-status').textContent = 'Grid changed. Run the solver again to search this deal.';
-      $('move-label').textContent = `${swaps} swap${swaps === 1 ? '' : 's'}`;
+      swapCards(selected, index);
+      return;
     }
+    render();
+  }
+
+  function swapCards(first, second) {
+    if (busy || first === second) return;
+    [board[first], board[second]] = [board[second], board[first]];
+    selected = -1;
+    swaps++;
+    solverBest = null;
+    $('apply-button').hidden = true;
+    $('solver-status').textContent = 'Grid changed. Run the solver again to search this deal.';
+    $('move-label').textContent = `${swaps} swap${swaps === 1 ? '' : 's'}`;
     render();
   }
 

@@ -34,7 +34,7 @@
             <div class="card-grid" id="card-grid" role="grid" aria-label="5 by 5 card grid"></div>
           </div>
         </div>
-        <div class="board-footer"><span><span class="key-hint">CLICK</span> two cards to swap</span><span id="move-label">0 swaps</span></div>
+        <div class="board-footer"><span><span class="key-hint">DRAG</span> cards or click two to swap</span><span id="move-label">0 swaps</span></div>
       </div>
 
       <aside class="side-column">
@@ -65,7 +65,7 @@
   <dialog id="help-dialog">
     <form method="dialog"><button class="dialog-close" aria-label="Close">×</button></form>
     <div class="eyebrow">HOW TO PLAY</div><h2>Five by five.<br><em>Ten poker hands.</em></h2>
-    <p>Each row and each column is a five-card poker hand. Click two cards to swap them; each card contributes to exactly two hands.</p>
+    <p>Each row and each column is a five-card poker hand. Drag one card onto another, or click two cards to swap them. Each card contributes to exactly two hands.</p>
     <p>Hand points equal <b>rank × 100 + the values of the cards making that hand</b>. Kickers do not add points: for example, four 8s with a 10 kicker score 832. A pair is rank 2, three of a kind is 4, a flush is 6, and a royal flush is 10. Face cards are worth 11–14.</p>
     <p>Use the solver to search for a higher total. It returns the strongest arrangement it finds within the selected search effort; the search is heuristic, so it may not prove a mathematically optimal grid.</p>
     <button class="dialog-done" id="close-help">Got it</button>
