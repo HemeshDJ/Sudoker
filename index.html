@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101a1b">
+  <title>Sudoker — Poker, arranged</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="Sudoker home"><span class="brand-mark">S</span><span>SUDOKER</span></a>
+      <div class="topbar-note"><span class="live-dot"></span> THE DAILY GRID <span id="today-label"></span></div>
+      <button class="icon-button" id="help-button" aria-label="How to play" title="How to play">?</button>
+    </header>
+
+    <section class="intro">
+      <div class="eyebrow">A LITTLE LOGIC. A LOT OF POKER.</div>
+      <h1>Make every hand<br><em>count twice.</em></h1>
+      <p>Arrange the cards so every row and column makes the strongest poker hand possible.</p>
+    </section>
+
+    <section class="game-layout" aria-label="Sudoker game">
+      <div class="board-column">
+        <div class="board-heading"><div><span class="section-label">YOUR GRID</span><span id="seed-label" class="seed-label"></span></div><div class="board-actions"><button class="text-button" id="dev-setup-button">⚙ <span>Dev setup</span></button><button class="text-button" id="new-deal">↻ <span>New deal</span></button></div></div>
+        <div class="board-wrap">
+          <div class="column-hands" id="column-hands" aria-label="Column hand scores"></div>
+          <div class="board-row">
+            <div class="row-hands" id="row-hands" aria-label="Row hand scores"></div>
+            <div class="card-grid" id="card-grid" role="grid" aria-label="5 by 5 card grid"></div>
+          </div>
+        </div>
+        <div class="board-footer"><span><span class="key-hint">CLICK</span> two cards to swap</span><span id="move-label">0 swaps</span></div>
+      </div>
+
+      <aside class="side-column">
+        <div class="score-card">
+          <div class="score-top"><span class="section-label">TOTAL SCORE</span><span class="score-chip"><span class="live-dot"></span> LIVE</span></div>
+          <div class="score-number" id="total-score">0</div>
+          <div class="score-rule"></div>
+          <div class="score-caption">Across all 10 hands</div>
+          <div class="score-breakdown"><span>Rows <b id="row-score">0</b></span><span>Columns <b id="col-score">0</b></span></div>
+        </div>
+
+        <div class="solver-card">
+          <div class="solver-title"><span class="solver-icon">✳</span><div><h2>Solver</h2><p>Find a stronger arrangement</p></div></div>
+          <label class="effort-label" for="effort"><span>Search effort</span><span id="effort-value">Balanced</span></label>
+          <input id="effort" type="range" min="1" max="3" value="2">
+          <div class="range-ends"><span>Quick</span><span>Deep</span></div>
+          <button class="solve-button" id="solve-button"><span>✦</span> Find best arrangement</button>
+          <div class="solver-status" id="solver-status" aria-live="polite">The solver searches for a higher-scoring grid.</div>
+          <div class="progress-track" id="progress-track" hidden><div id="progress-bar"></div></div>
+          <button class="apply-button" id="apply-button" hidden>Apply solver's best <span id="improvement-label"></span></button>
+        </div>
+        <div class="tip-card"><span class="tip-icon">↗</span><p><b>Think across the grid.</b> Every card belongs to both a row and a column—good swaps help both.</p></div>
+      </aside>
+    </section>
+    <footer class="page-footer"><span>SUIT YOURSELF.</span><span>BUILT FOR THE DAILY THINKER</span></footer>
+  </main>
+
+  <dialog id="help-dialog">
+    <form method="dialog"><button class="dialog-close" aria-label="Close">×</button></form>
+    <div class="eyebrow">HOW TO PLAY</div><h2>Five by five.<br><em>Ten poker hands.</em></h2>
+    <p>Each row and each column is a five-card poker hand. Click two cards to swap them; each card contributes to exactly two hands.</p>
+    <p>Hand points equal <b>rank × 100 + the values of the cards making that hand</b>. Kickers do not add points: for example, four 8s with a 10 kicker score 832. A pair is rank 2, three of a kind is 4, a flush is 6, and a royal flush is 10. Face cards are worth 11–14.</p>
+    <p>Use the solver to search for a higher total. It returns the strongest arrangement it finds within the selected search effort; the search is heuristic, so it may not prove a mathematically optimal grid.</p>
+    <button class="dialog-done" id="close-help">Got it</button>
+  </dialog>
+  <dialog id="dev-dialog" class="dev-dialog">
+    <form method="dialog"><button class="dialog-close" aria-label="Close">×</button></form>
+    <div class="eyebrow">DEV MODE · CUSTOM DEAL</div>
+    <h2>Pick your<br><em>25 cards.</em></h2>
+    <p class="dev-description">Choose exactly 25 distinct cards. We’ll shuffle your selected set into a fresh grid. Your current deal’s cards are selected to start.</p>
+    <div class="dev-pool-heading"><span id="dev-selection-count">25 / 25 selected</span><span id="dev-selection-hint">Ready to shuffle</span></div>
+    <div class="dev-card-pool" id="dev-card-pool" role="group" aria-label="Choose cards for a custom deal"></div>
+    <div class="dev-controls"><button class="dev-clear" id="dev-clear" type="button">Clear</button><button class="dev-start" id="dev-start" type="button">Shuffle cards &amp; start</button></div>
+    <div class="dev-validation" id="dev-validation" aria-live="polite">Pick exactly 25 cards to start a custom game.</div>
+  </dialog>
+  <script src="app.js"></script>
+</body>
+</html>
