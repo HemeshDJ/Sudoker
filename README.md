@@ -18,11 +18,11 @@ The `Deploy GitHub Pages` workflow publishes the static app whenever changes are
 - Use **New deal** for a random board. The initial board is seeded by the local date, so it stays the same for the day.
 - Use **Seed** to enter a numeric seed and recreate a deal. Custom dev deals also require the same selected 25-card set.
 - Open **Dev setup** to choose exactly 25 cards from a standard deck, then shuffle those selected cards into a custom game.
-- Choose a search effort and run the solver to look for a higher score.
+- Choose a search effort and run the solver to look for a higher score. **Forever** continues until you stop the search.
 
 ## Solver
 
-The solver uses simulated annealing with multiple restarts and card swaps as its moves. It returns the best arrangement it found during the configured search budget. This is a heuristic search, not a proof of the globally optimal arrangement.
+The solver uses simulated annealing with multiple restarts and card swaps as its moves. It returns the best arrangement it found during the configured search budget. Forever mode uses the same search loop until stopped; it retains only the original, current, and best 25-card arrangements instead of storing attempts, so memory use remains bounded. This is a heuristic search, not a proof of the globally optimal arrangement.
 
 ## Hand ranks
 

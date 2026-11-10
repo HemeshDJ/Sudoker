@@ -49,12 +49,16 @@
         <div class="solver-card">
           <div class="solver-title"><span class="solver-icon">✳</span><div><h2>Solver</h2><p>Find a stronger arrangement</p></div></div>
           <label class="effort-label" for="effort"><span>Search effort</span><span id="effort-value">Balanced</span></label>
-          <input id="effort" type="range" min="1" max="3" value="2">
-          <div class="range-ends"><span>Quick</span><span>Deep</span></div>
+          <input id="effort" type="range" min="1" max="4" value="2">
+          <div class="range-ends"><span>Quick</span><span>Forever</span></div>
           <button class="solve-button" id="solve-button"><span>✦</span> Find best arrangement</button>
+          <button class="continue-button" id="continue-button" type="button" hidden>Continue from session best</button>
+          <button class="stop-button" id="stop-button" type="button" hidden>Stop search</button>
           <div class="solver-status" id="solver-status" aria-live="polite">The solver searches for a higher-scoring grid.</div>
+          <div class="solver-session" id="solver-session" hidden><span>Session best</span><strong id="session-score">0</strong><small id="session-meta"></small><button id="reset-session" type="button">Reset</button></div>
           <div class="progress-track" id="progress-track" hidden><div id="progress-bar"></div></div>
           <button class="apply-button" id="apply-button" hidden>Apply solver's best <span id="improvement-label"></span></button>
+          <button class="guide-button" id="guide-button" type="button" hidden>Show minimum-move guide <span id="transition-label"></span></button>
         </div>
         <div class="tip-card"><span class="tip-icon">↗</span><p><b>Think across the grid.</b> Every card belongs to both a row and a column—good swaps help both.</p></div>
       </aside>
@@ -67,7 +71,7 @@
     <div class="eyebrow">HOW TO PLAY</div><h2>Five by five.<br><em>Ten poker hands.</em></h2>
     <p>Each row and each column is a five-card poker hand. Drag one card onto another, or click two cards to swap them. Each card contributes to exactly two hands.</p>
     <p>Hand points equal <b>rank × 100 + the values of the cards making that hand</b>. Kickers do not add points: for example, four 8s with a 10 kicker score 832. A pair is rank 2, three of a kind is 4, a flush is 6, and a royal flush is 10. Face cards are worth 11–14.</p>
-    <p>Use the solver to search for a higher total. It returns the strongest arrangement it finds within the selected search effort; the search is heuristic, so it may not prove a mathematically optimal grid.</p>
+    <p>Use the solver to search for a higher total. The Forever effort continues until you stop it. The search keeps only the current, best, and original grids in memory, so memory usage does not grow with the number of attempts. It is heuristic and may not prove a mathematically optimal grid.</p>
     <p>Each deal has a numeric seed shown beside YOUR GRID. Use <b>Seed</b> to enter that number again and recreate the same deal. Custom deals also require the same 25 selected cards.</p>
     <button class="dialog-done" id="close-help">Got it</button>
   </dialog>
@@ -93,6 +97,7 @@
     <div class="dev-controls"><button class="dev-clear" id="dev-clear" type="button">Clear</button><button class="dev-start" id="dev-start" type="button">Shuffle cards &amp; start</button></div>
     <div class="dev-validation" id="dev-validation" aria-live="polite">Pick exactly 25 cards to start a custom game.</div>
   </dialog>
+  <script src="solver-core.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

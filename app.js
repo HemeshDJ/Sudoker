@@ -21,7 +21,10 @@
   let customCards = null;
   let solverBest = null;
   let solverScore = 0;
+  let solverSession = null;
+  let moveGuideVisible = false;
   let busy = false;
+  let stopRequested = false;
   let devSelection = new Set();
 
   function hashSeed(text) {
@@ -38,6 +41,18 @@
       x ^= x << 5;
       return (x >>> 0) / 4294967296;
     };
+  }
+
+  function resumableRandom(value) {
+    let x = value >>> 0 || 1;
+    const random = () => {
+      x ^= x << 13;
+      x ^= x >>> 17;
+      x ^= x << 5;
+      return (x >>> 0) / 4294967296;
+    };
+    random.state = () => x >>> 0;
+    return random;
   }
 
   function fullDeck() {
@@ -59,15 +74,54 @@
     selected = -1;
     swaps = 0;
     solverBest = null;
+    moveGuideVisible = false;
     $('seed-label').textContent = `DEAL ${seed.toString(10)}`;
     $('move-label').textContent = '0 swaps';
     $('apply-button').hidden = true;
+    $('guide-button').hidden = true;
     $('solver-status').textContent = 'The solver searches for a higher-scoring grid.';
     $('progress-track').hidden = true;
     render();
   }
 
   function cardKey(card) { return `${card.suit}-${card.rank}`; }
+
+  function cardSetId(cards) { return cards.map(cardKey).sort().join('|'); }
+
+  function updateSessionUI() {
+    const hasSession = Boolean(solverSession);
+    $('solver-session').hidden = !hasSession;
+    $('continue-button').hidden = !hasSession || busy;
+    if (!hasSession) return;
+    $('session-score').textContent = solverSession.score.toLocaleString();
+    $('session-meta').textContent = `${solverSession.attempts.toLocaleString()} attempts · ${solverSession.runs} run${solverSession.runs === 1 ? '' : 's'}`;
+  }
+
+  function resetSolverSession() {
+    solverSession = null;
+    solverBest = null;
+    solverScore = 0;
+    updateSessionUI();
+  }
+
+  function ensureSolverSession() {
+    const id = cardSetId(board);
+    if (solverSession?.cardSetId === id) return solverSession;
+    const score = allHands(board).total;
+    solverSession = { cardSetId: id, incumbent: board.slice(), score, attempts: 0, runs: 0, rngState: hashSeed(`${id}:${seed}`) };
+    solverBest = solverSession.incumbent;
+    solverScore = score;
+    return solverSession;
+  }
+
+  function setIncumbent(session, candidate, score) {
+    if (score <= session.score) return false;
+    session.incumbent = candidate.slice();
+    session.score = score;
+    solverBest = session.incumbent;
+    solverScore = score;
+    return true;
+  }
 
   function dealCustom(cards, newSeed) {
     seed = (newSeed ?? ((Math.random() * 0xffffffff) >>> 0)) >>> 0 || 1;
@@ -76,9 +130,11 @@
     selected = -1;
     swaps = 0;
     solverBest = null;
+    moveGuideVisible = false;
     $('seed-label').textContent = `DEV ${seed.toString(10)}`;
     $('move-label').textContent = '0 swaps';
     $('apply-button').hidden = true;
+    $('guide-button').hidden = true;
     $('solver-status').textContent = 'The solver searches for a higher-scoring grid.';
     $('progress-track').hidden = true;
     render();
@@ -94,7 +150,7 @@
       const isSelected = devSelection.has(key);
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = `dev-card-picker ${card.color}${isSelected ? ' chosen' : ''}`;
+      button.className = `dev-card-picker ${card.color} suit-${card.suit}${isSelected ? ' chosen' : ''}`;
       button.setAttribute('aria-pressed', String(isSelected));
       button.setAttribute('aria-label', `${rankLabel(card.rank)} of ${card.suit}${isSelected ? ', selected' : ''}`);
       button.innerHTML = `<span>${rankLabel(card.rank)}</span><span>${card.symbol}</span>`;
@@ -137,7 +193,7 @@
     board.forEach((card, index) => {
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = `playing-card ${card.color}${selected === index ? ' selected' : ''}`;
+      button.className = `playing-card ${card.color} suit-${card.suit}${selected === index ? ' selected' : ''}`;
       button.setAttribute('role', 'gridcell');
       button.setAttribute('aria-label', `${rankLabel(card.rank)} of ${card.suit}${selected === index ? ', selected' : ''}`);
       button.dataset.index = String(index);
@@ -148,6 +204,52 @@
       });
       gridEl.append(button);
     });
+    if (moveGuideVisible) renderMoveGuide();
+  }
+
+  // A cycle of n cards needs n - 1 swaps. Chaining adjacent positions in each
+  // cycle produces an actionable plan with the smallest possible number of moves.
+  function minimumSwapPlan(current, target) {
+    const locations = new Map(current.map((card, index) => [cardKey(card), index]));
+    const next = target.map((card) => locations.get(cardKey(card)));
+    const seen = new Array(next.length).fill(false);
+    const plan = [];
+    for (let start = 0; start < next.length; start++) {
+      if (seen[start] || next[start] === start) continue;
+      const cycle = [];
+      let position = start;
+      while (!seen[position]) { seen[position] = true; cycle.push(position); position = next[position]; }
+      for (let i = 0; i < cycle.length - 1; i++) plan.push([cycle[i], cycle[i + 1]]);
+    }
+    return plan;
+  }
+
+  function renderMoveGuide() {
+    if (!solverBest) return;
+    const plan = minimumSwapPlan(board, solverBest);
+    const bounds = gridEl.getBoundingClientRect();
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.classList.add('move-guide');
+    svg.setAttribute('viewBox', `0 0 ${bounds.width} ${bounds.height}`);
+    svg.setAttribute('aria-label', `${plan.length} minimum swaps to the solver arrangement`);
+    svg.setAttribute('role', 'img');
+    svg.innerHTML = '<defs><marker id="move-arrowhead-start" markerWidth="7" markerHeight="7" refX="2" refY="3.5" orient="auto"><path d="M7,0 L0,3.5 L7,7 Z" /></marker><marker id="move-arrowhead-end" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" /></marker></defs>';
+    plan.forEach(([from, to], index) => {
+      const source = gridEl.querySelector(`[data-index="${from}"]`).getBoundingClientRect();
+      const destination = gridEl.querySelector(`[data-index="${to}"]`).getBoundingClientRect();
+      const x1 = source.left - bounds.left + source.width / 2, y1 = source.top - bounds.top + source.height / 2;
+      const x2 = destination.left - bounds.left + destination.width / 2, y2 = destination.top - bounds.top + destination.height / 2;
+      const line = document.createElementNS(svg.namespaceURI, 'line');
+      line.setAttribute('x1', x1); line.setAttribute('y1', y1); line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+      line.setAttribute('class', 'move-guide-line');
+      line.setAttribute('marker-start', 'url(#move-arrowhead-start)');
+      line.setAttribute('marker-end', 'url(#move-arrowhead-end)');
+      svg.append(line);
+      const label = document.createElementNS(svg.namespaceURI, 'text');
+      label.setAttribute('x', (x1 + x2) / 2); label.setAttribute('y', (y1 + y2) / 2);
+      label.setAttribute('class', 'move-guide-label'); label.textContent = String(index + 1); svg.append(label);
+    });
+    gridEl.append(svg);
   }
 
   function findCardAtPoint(x, y) {
@@ -283,7 +385,9 @@
     selected = -1;
     swaps++;
     solverBest = null;
+    moveGuideVisible = false;
     $('apply-button').hidden = true;
+    $('guide-button').hidden = true;
     $('solver-status').textContent = 'Grid changed. Run the solver again to search this deal.';
     $('move-label').textContent = `${swaps} swap${swaps === 1 ? '' : 's'}`;
     render();
@@ -311,16 +415,24 @@
   async function runSolver() {
     if (busy) return;
     busy = true;
+    stopRequested = false;
+    moveGuideVisible = false;
     $('solve-button').disabled = true;
     $('new-deal').disabled = true;
     $('seed-button').disabled = true;
     $('dev-setup-button').disabled = true;
+    $('stop-button').hidden = false;
+    $('stop-button').disabled = false;
     $('apply-button').hidden = true;
+    $('guide-button').hidden = true;
+    $('guide-button').innerHTML = 'Show minimum-move guide <span id="transition-label"></span>';
     $('progress-track').hidden = false;
     $('progress-bar').style.width = '0%';
     const original = board.slice();
     const originalScore = allHands(original).total;
-    const budget = effortBudgets[Number($('effort').value)];
+    const effort = Number($('effort').value);
+    const endless = effort === 4;
+    const budget = effortBudgets[effort === 4 ? 3 : effort];
     const random = randomGenerator((seed ^ Math.imul(swaps + 17, 0x9e3779b1) ^ (Date.now() >>> 0)) >>> 0 || 1);
     let best = original.slice();
     let bestScore = originalScore;
@@ -329,15 +441,16 @@
     const restarts = 4;
     const perRestart = Math.floor(budget / restarts);
     let done = 0;
+    let restart = 0;
 
     try {
-      for (let restart = 0; restart < restarts; restart++) {
+      while ((endless || restart < restarts) && !stopRequested) {
         if (restart > 0) {
           current = restart % 2 ? shuffledCopy(best, random) : shuffledCopy(original, random);
           currentScore = allHands(current).total;
           if (currentScore > bestScore) { bestScore = currentScore; best = current.slice(); }
         }
-        for (let step = 0; step < perRestart; step++) {
+        for (let step = 0; step < perRestart && !stopRequested; step++) {
           const progress = step / perRestart;
           const temperature = 105 * Math.pow(0.7, progress * 8) + 0.7;
           const a = Math.floor(random() * 25);
@@ -354,22 +467,31 @@
           }
           done++;
           if (step % 2500 === 0) {
-            $('progress-bar').style.width = `${Math.round(done / budget * 100)}%`;
-            $('solver-status').textContent = `Searching · best found ${bestScore.toLocaleString()} points`;
+            const progress = endless ? (step + 1) / perRestart : done / budget;
+            $('progress-bar').style.width = `${Math.round(progress * 100)}%`;
+            $('solver-status').textContent = endless
+              ? `Searching forever · ${done.toLocaleString()} swap attempts · best ${bestScore.toLocaleString()} points`
+              : `Searching · best found ${bestScore.toLocaleString()} points`;
             await new Promise((resolve) => setTimeout(resolve, 0));
           }
         }
+        restart++;
       }
       solverBest = best;
       solverScore = bestScore;
       const gain = bestScore - originalScore;
       $('progress-bar').style.width = '100%';
-      $('solver-status').textContent = gain > 0
-        ? `Search complete · found an arrangement ${gain.toLocaleString()} points higher.`
-        : 'Search complete · no higher arrangement found in this search.';
+      $('solver-status').textContent = stopRequested
+        ? `Search stopped after ${done.toLocaleString()} swap attempts · best ${bestScore.toLocaleString()} points.`
+        : gain > 0
+          ? `Search complete · found an arrangement ${gain.toLocaleString()} points higher.`
+          : 'Search complete · no higher arrangement found in this search.';
       if (gain > 0) {
         $('improvement-label').textContent = `+${gain.toLocaleString()} pts`;
         $('apply-button').hidden = false;
+        const transitions = minimumSwapPlan(original, best).length;
+        $('transition-label').textContent = `(${transitions} swap${transitions === 1 ? '' : 's'})`;
+        $('guide-button').hidden = false;
       }
     } finally {
       busy = false;
@@ -377,19 +499,41 @@
       $('new-deal').disabled = false;
       $('seed-button').disabled = false;
       $('dev-setup-button').disabled = false;
+      $('stop-button').hidden = true;
+      $('stop-button').disabled = false;
       $('solve-button').innerHTML = '<span>✦</span> Find best arrangement';
     }
   }
 
   $('solve-button').addEventListener('click', runSolver);
+  $('stop-button').addEventListener('click', () => {
+    if (!busy) return;
+    stopRequested = true;
+    $('stop-button').disabled = true;
+    $('solver-status').textContent = 'Stopping after the current batch…';
+  });
   $('apply-button').addEventListener('click', () => {
     if (!solverBest || busy) return;
     board = solverBest.slice();
     selected = -1;
+    moveGuideVisible = false;
     $('move-label').textContent = 'Solver arrangement';
     $('solver-status').textContent = `Applied arrangement · ${solverScore.toLocaleString()} points.`;
     $('apply-button').hidden = true;
+    $('guide-button').hidden = true;
     render();
+  });
+  $('guide-button').addEventListener('click', () => {
+    if (!solverBest || busy) return;
+    moveGuideVisible = !moveGuideVisible;
+    const transitions = minimumSwapPlan(board, solverBest).length;
+    $('guide-button').innerHTML = moveGuideVisible
+      ? 'Hide minimum-move guide'
+      : `Show minimum-move guide <span id="transition-label">(${transitions} swap${transitions === 1 ? '' : 's'})</span>`;
+    render();
+  });
+  window.addEventListener('resize', () => {
+    if (moveGuideVisible) render();
   });
   $('new-deal').addEventListener('click', () => deal((Math.random() * 0xffffffff) >>> 0));
   $('seed-button').addEventListener('click', openSeedDialog);
@@ -417,7 +561,7 @@
     dealCustom(selectedCards);
   });
   $('effort').addEventListener('input', () => {
-    $('effort-value').textContent = ({ 1: 'Quick', 2: 'Balanced', 3: 'Deep' })[$('effort').value];
+    $('effort-value').textContent = ({ 1: 'Quick', 2: 'Balanced', 3: 'Deep', 4: 'Forever' })[$('effort').value];
   });
   $('help-button').addEventListener('click', () => $('help-dialog').showModal());
   $('close-help').addEventListener('click', () => $('help-dialog').close());
