@@ -36,7 +36,17 @@
             </div>
           </div>
         </div>
-        <div class="board-footer"><span><span class="key-hint">DRAG</span> cards or click two to swap</span><span id="move-label">0 swaps</span></div>
+        <div class="board-footer">
+          <span class="board-hint"><span class="key-hint">DRAG</span> cards or click two to swap</span>
+          <div class="history-actions">
+            <button class="text-button" id="undo-button" type="button" disabled aria-keyshortcuts="Control+Z" title="Undo (Ctrl+Z)">↶ <span>Undo</span></button>
+            <button class="text-button" id="redo-button" type="button" disabled aria-keyshortcuts="Control+Y Control+Shift+Z" title="Redo (Ctrl+Y)">↷ <span>Redo</span></button>
+            <button class="text-button" id="save-button" type="button" aria-keyshortcuts="Control+S" title="Save this grid for this browser tab">Save</button>
+            <button class="text-button" id="load-button" type="button" disabled title="No setup saved in this tab yet">Load</button>
+            <span id="move-label">0 swaps</span>
+          </div>
+          <span id="history-status" class="history-status" aria-live="polite"></span>
+        </div>
       </div>
 
       <aside class="side-column">
@@ -72,6 +82,7 @@
     <form method="dialog"><button class="dialog-close" aria-label="Close">×</button></form>
     <div class="eyebrow">HOW TO PLAY</div><h2>Five by five. <em>Ten poker hands.</em></h2>
     <p>Each row and each column is a five-card poker hand. Drag one card onto another, or click two cards to swap them. Each card contributes to exactly two hands.</p>
+    <p>Ctrl+Z undoes a swap, an applied solver grid, or a new deal. Ctrl+Y or Ctrl+Shift+Z redoes it. Save stores the current grid in this browser tab only; Load brings it back, including after a refresh. Closing the tab clears that save.</p>
     <p>Hand points equal <b>rank × 100 + the values of the cards making that hand</b>. Kickers do not add points: for example, four 8s with a 10 kicker score 832. A pair is rank 2, three of a kind is 4, a flush is 6, and a royal flush is 10. Face cards are worth 11–14.</p>
     <p>Use the solver to search for a higher total. After the first run, Continue from session best resumes from the strongest arrangement found for these 25 cards. The session survives your swaps, but resets for a new deal or changed card set. Forever continues until you stop it. The search is heuristic and may not prove a mathematically optimal grid.</p>
     <p>Each deal has a numeric seed shown beside YOUR GRID. Use <b>Seed</b> to enter that number again and recreate the same deal. Custom deals also require the same 25 selected cards.</p>
