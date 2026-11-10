@@ -165,13 +165,26 @@
     $('dev-selection-count').textContent = `${count} / 25 selected`;
     $('dev-selection-hint').textContent = count === 25 ? 'Ready to shuffle' : `${25 - count} more needed`;
     $('dev-start').disabled = count !== 25;
+    $('dev-validation').textContent = count === 25
+      ? 'Selection ready — shuffle to start a custom game.'
+      : `Pick exactly 25 cards to start a custom game. (${count} selected)`;
+  }
+
+  function setDialogOpen(dialog, open) {
+    if (open) {
+      dialog.removeAttribute('inert');
+      dialog.showModal();
+    } else {
+      dialog.close();
+      dialog.setAttribute('inert', '');
+    }
   }
 
   function openDevSetup() {
     if (busy) return;
     devSelection = new Set(board.map(cardKey));
     renderDevPicker();
-    $('dev-dialog').showModal();
+    setDialogOpen($('dev-dialog'), true);
   }
 
   function openSeedDialog() {
@@ -181,7 +194,7 @@
     $('seed-description').textContent = customCards
       ? 'For a custom deal, the same seed shuffles the same selected 25-card set into the same starting grid.'
       : 'Use the number shown beside YOUR GRID to recreate that standard deal.';
-    $('seed-dialog').showModal();
+    setDialogOpen($('seed-dialog'), true);
     $('seed-input').focus();
     $('seed-input').select();
   }
@@ -190,20 +203,29 @@
 
   function renderBoard() {
     gridEl.replaceChildren();
-    board.forEach((card, index) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = `playing-card ${card.color} suit-${card.suit}${selected === index ? ' selected' : ''}`;
-      button.setAttribute('role', 'gridcell');
-      button.setAttribute('aria-label', `${rankLabel(card.rank)} of ${card.suit}${selected === index ? ', selected' : ''}`);
-      button.dataset.index = String(index);
-      button.innerHTML = `<span class="card-corner">${rankLabel(card.rank)}<span>${card.symbol}</span></span><span class="card-center">${card.symbol}</span><span class="card-corner bottom">${rankLabel(card.rank)}<span>${card.symbol}</span></span>`;
-      button.addEventListener('click', () => {
-        if (suppressClick) return;
-        chooseCard(index);
-      });
-      gridEl.append(button);
-    });
+    for (let row = 0; row < 5; row++) {
+      const rowEl = document.createElement('div');
+      rowEl.className = 'card-row';
+      rowEl.setAttribute('role', 'row');
+      for (let col = 0; col < 5; col++) {
+        const index = row * 5 + col;
+        const card = board[index];
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `playing-card ${card.color} suit-${card.suit}${selected === index ? ' selected' : ''}`;
+        button.setAttribute('role', 'gridcell');
+        button.setAttribute('aria-selected', String(selected === index));
+        button.setAttribute('aria-label', `${rankLabel(card.rank)} of ${card.suit}${selected === index ? ', selected' : ''}`);
+        button.dataset.index = String(index);
+        button.innerHTML = `<span class="card-corner">${rankLabel(card.rank)}<span>${card.symbol}</span></span><span class="card-center">${card.symbol}</span><span class="card-corner bottom">${rankLabel(card.rank)}<span>${card.symbol}</span></span>`;
+        button.addEventListener('click', () => {
+          if (suppressClick) return;
+          chooseCard(index);
+        });
+        rowEl.append(button);
+      }
+      gridEl.append(rowEl);
+    }
     if (moveGuideVisible) renderMoveGuide();
   }
 
@@ -593,7 +615,7 @@
   });
   $('new-deal').addEventListener('click', () => deal((Math.random() * 0xffffffff) >>> 0));
   $('seed-button').addEventListener('click', openSeedDialog);
-  $('seed-cancel').addEventListener('click', () => $('seed-dialog').close());
+  $('seed-cancel').addEventListener('click', () => setDialogOpen($('seed-dialog'), false));
   $('seed-form').addEventListener('submit', (event) => {
     event.preventDefault();
     const value = Number($('seed-input').value);
@@ -601,7 +623,7 @@
       $('seed-error').textContent = 'Enter a whole number from 1 to 4,294,967,295.';
       return;
     }
-    $('seed-dialog').close();
+    setDialogOpen($('seed-dialog'), false);
     if (customCards) dealCustom(customCards, value);
     else deal(value);
   });
@@ -613,16 +635,20 @@
   $('dev-start').addEventListener('click', () => {
     if (devSelection.size !== 25) return;
     const selectedCards = fullDeck().filter((card) => devSelection.has(cardKey(card)));
-    $('dev-dialog').close();
+    setDialogOpen($('dev-dialog'), false);
     dealCustom(selectedCards);
   });
   $('effort').addEventListener('input', () => {
     $('effort-value').textContent = ({ 1: 'Quick', 2: 'Balanced', 3: 'Deep', 4: 'Forever' })[$('effort').value];
   });
-  $('help-button').addEventListener('click', () => $('help-dialog').showModal());
-  $('close-help').addEventListener('click', () => $('help-dialog').close());
-  $('help-dialog').addEventListener('click', (event) => {
-    if (event.target === $('help-dialog')) $('help-dialog').close();
+  $('help-button').addEventListener('click', () => setDialogOpen($('help-dialog'), true));
+  $('close-help').addEventListener('click', () => setDialogOpen($('help-dialog'), false));
+  document.querySelectorAll('dialog').forEach((dialog) => {
+    dialog.setAttribute('inert', '');
+    dialog.addEventListener('close', () => dialog.setAttribute('inert', ''));
+    dialog.addEventListener('click', (event) => {
+      if (event.target === dialog) setDialogOpen(dialog, false);
+    });
   });
 
   $('today-label').textContent = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(new Date()).toUpperCase();

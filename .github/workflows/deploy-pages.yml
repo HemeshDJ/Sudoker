@@ -31,7 +31,7 @@ jobs:
       - name: Prepare static site
         run: |
           mkdir dist
-          cp index.html app.js styles.css dist/
+          cp index.html app.js styles.css solver-core.js dist/
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4

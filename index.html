@@ -28,10 +28,12 @@
       <div class="board-column">
         <div class="board-heading"><div><span class="section-label">YOUR GRID</span><span id="seed-label" class="seed-label"></span></div><div class="board-actions"><button class="text-button" id="dev-setup-button">⚙ <span>Dev setup</span></button><button class="text-button" id="seed-button" title="Enter a deal seed"># <span>Seed</span></button><button class="text-button" id="new-deal">↻ <span>New deal</span></button></div></div>
         <div class="board-wrap">
-          <div class="column-hands" id="column-hands" aria-label="Column hand scores"></div>
-          <div class="board-row">
-            <div class="row-hands" id="row-hands" aria-label="Row hand scores"></div>
-            <div class="card-grid" id="card-grid" role="grid" aria-label="5 by 5 card grid"></div>
+          <div class="board-stage">
+            <div class="column-hands" id="column-hands" aria-label="Column hand scores"></div>
+            <div class="board-row">
+              <div class="row-hands" id="row-hands" aria-label="Row hand scores"></div>
+              <div class="card-grid" id="card-grid" role="grid" aria-label="5 by 5 card grid"></div>
+            </div>
           </div>
         </div>
         <div class="board-footer"><span><span class="key-hint">DRAG</span> cards or click two to swap</span><span id="move-label">0 swaps</span></div>
@@ -68,7 +70,7 @@
 
   <dialog id="help-dialog">
     <form method="dialog"><button class="dialog-close" aria-label="Close">×</button></form>
-    <div class="eyebrow">HOW TO PLAY</div><h2>Five by five.<br><em>Ten poker hands.</em></h2>
+    <div class="eyebrow">HOW TO PLAY</div><h2>Five by five. <em>Ten poker hands.</em></h2>
     <p>Each row and each column is a five-card poker hand. Drag one card onto another, or click two cards to swap them. Each card contributes to exactly two hands.</p>
     <p>Hand points equal <b>rank × 100 + the values of the cards making that hand</b>. Kickers do not add points: for example, four 8s with a 10 kicker score 832. A pair is rank 2, three of a kind is 4, a flush is 6, and a royal flush is 10. Face cards are worth 11–14.</p>
     <p>Use the solver to search for a higher total. After the first run, Continue from session best resumes from the strongest arrangement found for these 25 cards. The session survives your swaps, but resets for a new deal or changed card set. Forever continues until you stop it. The search is heuristic and may not prove a mathematically optimal grid.</p>
@@ -78,7 +80,7 @@
   <dialog id="seed-dialog" class="seed-dialog">
     <form method="dialog"><button class="dialog-close" aria-label="Close">×</button></form>
     <div class="eyebrow">REPLAY A DEAL</div>
-    <h2>Enter a<br><em>deal seed.</em></h2>
+    <h2>Enter a <em>deal seed.</em></h2>
     <p id="seed-description">Use the number shown beside YOUR GRID to recreate that deal.</p>
     <form id="seed-form" class="seed-form">
       <label for="seed-input">Seed number</label>
@@ -90,12 +92,12 @@
   <dialog id="dev-dialog" class="dev-dialog">
     <form method="dialog"><button class="dialog-close" aria-label="Close">×</button></form>
     <div class="eyebrow">DEV MODE · CUSTOM DEAL</div>
-    <h2>Pick your<br><em>25 cards.</em></h2>
+    <h2>Pick your <em>25 cards.</em></h2>
     <p class="dev-description">Choose exactly 25 distinct cards. We’ll shuffle your selected set into a fresh grid. Your current deal’s cards are selected to start.</p>
     <div class="dev-pool-heading"><span id="dev-selection-count">25 / 25 selected</span><span id="dev-selection-hint">Ready to shuffle</span></div>
     <div class="dev-card-pool" id="dev-card-pool" role="group" aria-label="Choose cards for a custom deal"></div>
     <div class="dev-controls"><button class="dev-clear" id="dev-clear" type="button">Clear</button><button class="dev-start" id="dev-start" type="button">Shuffle cards &amp; start</button></div>
-    <div class="dev-validation" id="dev-validation" aria-live="polite">Pick exactly 25 cards to start a custom game.</div>
+    <div class="dev-validation" id="dev-validation" aria-live="polite"></div>
   </dialog>
   <script src="solver-core.js"></script>
   <script src="app.js"></script>
