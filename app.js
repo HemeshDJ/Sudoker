@@ -73,7 +73,7 @@
     board = deck.slice(0, 25);
     selected = -1;
     swaps = 0;
-    solverBest = null;
+    resetSolverSession();
     moveGuideVisible = false;
     $('seed-label').textContent = `DEAL ${seed.toString(10)}`;
     $('move-label').textContent = '0 swaps';
@@ -129,7 +129,7 @@
     board = shuffledCopy(customCards, randomGenerator(seed));
     selected = -1;
     swaps = 0;
-    solverBest = null;
+    resetSolverSession();
     moveGuideVisible = false;
     $('seed-label').textContent = `DEV ${seed.toString(10)}`;
     $('move-label').textContent = '0 swaps';
@@ -312,7 +312,7 @@
     clearDragStyles();
   });
 
-  function evaluateHand(cards) {
+  function legacyEvaluateHand(cards) {
     const ranks = cards.map((card) => card.rank).sort((a, b) => b - a);
     const groups = new Map();
     for (const rank of ranks) groups.set(rank, (groups.get(rank) || 0) + 1);
@@ -343,6 +343,8 @@
     const points = (category + 1) * 100 + scoredCardValue;
     return { category, name: handNames[category], points };
   }
+
+  function evaluateHand(cards) { return window.SudokerSolver.evaluateHand(cards); }
 
   function allHands(cards) {
     const rows = [], columns = [];
@@ -384,13 +386,15 @@
     [board[first], board[second]] = [board[second], board[first]];
     selected = -1;
     swaps++;
-    solverBest = null;
     moveGuideVisible = false;
-    $('apply-button').hidden = true;
+    const session = ensureSolverSession();
+    const currentScore = allHands(board).total;
+    $('apply-button').hidden = session.score <= currentScore;
     $('guide-button').hidden = true;
-    $('solver-status').textContent = 'Grid changed. Run the solver again to search this deal.';
+    $('solver-status').textContent = `Grid changed. Session best remains ${session.score.toLocaleString()} points.`;
     $('move-label').textContent = `${swaps} swap${swaps === 1 ? '' : 's'}`;
     render();
+    updateSessionUI();
   }
 
   function swapRandom(cards, random, min = 1, max = 1) {
@@ -412,7 +416,39 @@
     return copy;
   }
 
-  async function runSolver() {
+  function randomPosition(random, except = []) {
+    let position;
+    do position = Math.floor(random() * 25); while (except.includes(position));
+    return position;
+  }
+
+  function chooseMove(state, random) {
+    let a;
+    // Spend some moves on cards shared by the weakest current hands, while
+    // retaining random moves for exploration.
+    if (random() < 0.32) {
+      const hands = state.rows.map((hand, index) => ({ hand, row: index }))
+        .concat(state.columns.map((hand, index) => ({ hand, column: index })))
+        .sort((left, right) => left.hand.points - right.hand.points);
+      const weak = hands[Math.floor(random() * Math.min(3, hands.length))];
+      a = weak.row === undefined ? weak.column + 5 * Math.floor(random() * 5) : weak.row * 5 + Math.floor(random() * 5);
+    } else a = randomPosition(random);
+    const b = randomPosition(random, [a]);
+    return random() < 0.12 ? [a, b, randomPosition(random, [a, b])] : [a, b];
+  }
+
+  function restartBoard(best, original, restart, random) {
+    if (restart % 4 === 1) {
+      const nearby = best.slice(); swapRandom(nearby, random, 2, 5); return nearby;
+    }
+    if (restart % 4 === 2) {
+      const nearby = best.slice(); swapRandom(nearby, random, 7, 14); return nearby;
+    }
+    if (restart % 4 === 3) return shuffledCopy(best, random);
+    return shuffledCopy(original, random);
+  }
+
+  async function runSolver(mode = 'current') {
     if (busy) return;
     busy = true;
     stopRequested = false;
@@ -426,70 +462,81 @@
     $('apply-button').hidden = true;
     $('guide-button').hidden = true;
     $('guide-button').innerHTML = 'Show minimum-move guide <span id="transition-label"></span>';
+    updateSessionUI();
     $('progress-track').hidden = false;
     $('progress-bar').style.width = '0%';
     const original = board.slice();
     const originalScore = allHands(original).total;
+    const session = ensureSolverSession();
+    setIncumbent(session, original, originalScore);
     const effort = Number($('effort').value);
     const endless = effort === 4;
     const budget = effortBudgets[effort === 4 ? 3 : effort];
-    const random = randomGenerator((seed ^ Math.imul(swaps + 17, 0x9e3779b1) ^ (Date.now() >>> 0)) >>> 0 || 1);
-    let best = original.slice();
-    let bestScore = originalScore;
-    let current = original.slice();
-    let currentScore = originalScore;
+    const random = resumableRandom(session.rngState);
+    let best = session.incumbent.slice();
+    let bestScore = session.score;
+    let currentState = window.SudokerSolver.createSearchState(mode === 'continue' ? best : original);
     const restarts = 4;
     const perRestart = Math.floor(budget / restarts);
     let done = 0;
     let restart = 0;
+    let plateau = 0;
+    const startedAt = performance.now();
 
     try {
       while ((endless || restart < restarts) && !stopRequested) {
         if (restart > 0) {
-          current = restart % 2 ? shuffledCopy(best, random) : shuffledCopy(original, random);
-          currentScore = allHands(current).total;
-          if (currentScore > bestScore) { bestScore = currentScore; best = current.slice(); }
+          currentState = window.SudokerSolver.createSearchState(restartBoard(best, original, restart, random));
+          plateau = 0;
         }
         for (let step = 0; step < perRestart && !stopRequested; step++) {
           const progress = step / perRestart;
-          const temperature = 105 * Math.pow(0.7, progress * 8) + 0.7;
-          const a = Math.floor(random() * 25);
-          let b = Math.floor(random() * 24);
-          if (b >= a) b++;
-          [current[a], current[b]] = [current[b], current[a]];
-          const candidateScore = allHands(current).total;
-          const delta = candidateScore - currentScore;
+          const reheating = plateau > perRestart / 3 ? 2.2 : 1;
+          const temperature = (105 * Math.pow(0.7, progress * 8) + 0.7) * reheating;
+          const undo = window.SudokerSolver.applyCycle(currentState, chooseMove(currentState, random));
+          const candidateScore = currentState.total;
+          const delta = candidateScore - undo.oldTotal;
           if (delta >= 0 || random() < Math.exp(delta / temperature)) {
-            currentScore = candidateScore;
-            if (candidateScore > bestScore) { bestScore = candidateScore; best = current.slice(); }
+            if (candidateScore > bestScore) {
+              bestScore = candidateScore;
+              best = currentState.board.slice();
+              plateau = 0;
+            } else plateau++;
           } else {
-            [current[a], current[b]] = [current[b], current[a]];
+            window.SudokerSolver.undoCycle(currentState, undo);
+            plateau++;
           }
           done++;
           if (step % 2500 === 0) {
             const progress = endless ? (step + 1) / perRestart : done / budget;
+            const seconds = Math.max((performance.now() - startedAt) / 1000, 0.01);
             $('progress-bar').style.width = `${Math.round(progress * 100)}%`;
             $('solver-status').textContent = endless
-              ? `Searching forever · ${done.toLocaleString()} swap attempts · best ${bestScore.toLocaleString()} points`
-              : `Searching · best found ${bestScore.toLocaleString()} points`;
+              ? `Searching forever · ${done.toLocaleString()} attempts · ${(done / seconds).toFixed(0)}/sec · best ${bestScore.toLocaleString()}`
+              : `Searching · ${(done / seconds).toFixed(0)} attempts/sec · best ${bestScore.toLocaleString()} points`;
             await new Promise((resolve) => setTimeout(resolve, 0));
           }
         }
         restart++;
       }
-      solverBest = best;
-      solverScore = bestScore;
+      setIncumbent(session, best, bestScore);
+      session.attempts += done;
+      session.runs++;
+      session.rngState = random.state();
+      solverBest = session.incumbent;
+      solverScore = session.score;
       const gain = bestScore - originalScore;
       $('progress-bar').style.width = '100%';
       $('solver-status').textContent = stopRequested
-        ? `Search stopped after ${done.toLocaleString()} swap attempts · best ${bestScore.toLocaleString()} points.`
+        ? `Search stopped after ${done.toLocaleString()} attempts · session best ${session.score.toLocaleString()} points.`
         : gain > 0
           ? `Search complete · found an arrangement ${gain.toLocaleString()} points higher.`
-          : 'Search complete · no higher arrangement found in this search.';
-      if (gain > 0) {
-        $('improvement-label').textContent = `+${gain.toLocaleString()} pts`;
+          : 'Search complete · no higher arrangement found in this run.';
+      const displayedGain = session.score - originalScore;
+      if (displayedGain > 0) {
+        $('improvement-label').textContent = `+${displayedGain.toLocaleString()} pts`;
         $('apply-button').hidden = false;
-        const transitions = minimumSwapPlan(original, best).length;
+        const transitions = minimumSwapPlan(original, session.incumbent).length;
         $('transition-label').textContent = `(${transitions} swap${transitions === 1 ? '' : 's'})`;
         $('guide-button').hidden = false;
       }
@@ -502,10 +549,19 @@
       $('stop-button').hidden = true;
       $('stop-button').disabled = false;
       $('solve-button').innerHTML = '<span>✦</span> Find best arrangement';
+      updateSessionUI();
     }
   }
 
   $('solve-button').addEventListener('click', runSolver);
+  $('continue-button').addEventListener('click', () => runSolver('continue'));
+  $('reset-session').addEventListener('click', () => {
+    if (busy) return;
+    resetSolverSession();
+    $('apply-button').hidden = true;
+    $('guide-button').hidden = true;
+    $('solver-status').textContent = 'Solver progress reset for this deal.';
+  });
   $('stop-button').addEventListener('click', () => {
     if (!busy) return;
     stopRequested = true;

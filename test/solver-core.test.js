@@ -16,7 +16,8 @@ const state = createSearchState(deck.slice(0, 25));
 for (let step = 0; step < 2_000; step++) {
   const a = Math.floor(next() * 25);
   let b = Math.floor(next() * 25); if (b === a) b = (b + 1) % 25;
-  const undo = applyCycle(state, [a, b]);
+  let c = Math.floor(next() * 25); while (c === a || c === b) c = Math.floor(next() * 25);
+  const undo = applyCycle(state, next() < 0.2 ? [a, b, c] : [a, b]);
   assert.equal(state.total, createSearchState(state.board).total, `cached total diverged at step ${step}`);
   if (next() < 0.5) {
     undoCycle(state, undo);
