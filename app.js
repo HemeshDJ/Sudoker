@@ -28,12 +28,13 @@
   let busy = false;
   let stopRequested = false;
   let devSelection = new Set();
-  const SETUP_KEY = 'sudoker-setup';
+  const SETUPS_KEY = 'sudoker-setups';
+  const LEGACY_SETUP_KEY = 'sudoker-setup';
   const HISTORY_LIMIT = 300;
+  const SETUPS_LIMIT = 24;
   let undoStack = [];
   let redoStack = [];
-  let memorySetup = null;
-  let historyTimer = 0;
+  let memorySetups = [];
 
   function hashSeed(text) {
     let h = 2166136261;
@@ -532,11 +533,23 @@
     };
   }
 
+  function displayedMoveText() {
+    const text = $('move-label').textContent;
+    if (applyPreview || text.startsWith('Preview')) return formatSwaps(swaps);
+    return text;
+  }
+
+  function endPreview() {
+    applyPreview = false;
+    applyPreviewTarget = null;
+    document.querySelector('.board-wrap')?.classList.remove('is-previewing');
+  }
+
   function captureState() {
     return {
       board: board.slice(),
       swaps,
-      moveText: $('move-label').textContent,
+      moveText: displayedMoveText(),
       seed,
       customCards: customCards ? customCards.slice() : null,
       solverSession: cloneSession(solverSession),
@@ -561,12 +574,11 @@
     updateHistoryUI();
   }
 
-  // Same-card edits keep later solver progress. Deal and load checkpoints
-  // restore the session that belonged to the grid being returned to.
   function applyCaptured(state) {
     const previousId = board.length === 25 ? cardSetId(board) : '';
     activeDrag = null;
     clearDragStyles();
+    endPreview();
     board = state.board.slice();
     swaps = state.swaps;
     seed = state.seed;
@@ -575,8 +587,10 @@
     $('move-label').textContent = state.moveText;
     $('seed-label').textContent = seedText();
     const id = cardSetId(board);
-    const sameDealMove = state.kind === 'move' && previousId === id;
-    if (!sameDealMove) {
+    // Deal checkpoints restore that deal's solver session. Swaps, applies, and
+    // a load of the same cards keep any solver progress made afterward.
+    const keepLive = previousId === id && state.kind !== 'deal';
+    if (!keepLive) {
       if (state.solverSession && state.solverSession.cardSetId === id) {
         solverSession = cloneSession(state.solverSession);
         solverBest = solverSession.incumbent;
@@ -607,21 +621,7 @@
     updateSessionUI();
     render();
     updateHistoryUI();
-    return sameDealMove;
-  }
-
-  function gridStatus(prefix) {
-    if (solverSession && solverSession.cardSetId === cardSetId(board)) {
-      return `${prefix} Session best remains ${solverSession.score.toLocaleString()} points.`;
-    }
-    return prefix;
-  }
-
-  function announceHistory(message) {
-    const status = $('history-status');
-    status.textContent = message;
-    window.clearTimeout(historyTimer);
-    historyTimer = window.setTimeout(() => { status.textContent = ''; }, 1600);
+    return keepLive;
   }
 
   function undoMove() {
@@ -630,9 +630,7 @@
     const current = captureState();
     current.kind = target.kind;
     redoStack.push(current);
-    const refreshStatus = applyCaptured(target);
-    if (refreshStatus) $('solver-status').textContent = gridStatus('Move undone.');
-    announceHistory('Move undone.');
+    applyCaptured(target);
   }
 
   function redoMove() {
@@ -641,13 +639,11 @@
     const current = captureState();
     current.kind = target.kind;
     undoStack.push(current);
-    const refreshStatus = applyCaptured(target);
-    if (refreshStatus) $('solver-status').textContent = gridStatus('Move redone.');
-    announceHistory('Move redone.');
+    applyCaptured(target);
   }
 
   function normalizeSetup(data) {
-    if (!data || data.version !== 1) return null;
+    if (!data || (data.version !== 1 && data.version !== 2)) return null;
     const cards = uniqueCards(data.board);
     if (!cards) return null;
     if (!Number.isInteger(data.seed) || data.seed < 1 || data.seed > 0xffffffff) return null;
@@ -657,8 +653,16 @@
       if (!custom || cardSetId(custom) !== cardSetId(cards)) return null;
     }
     if (!Number.isInteger(data.swaps) || data.swaps < 0 || data.swaps > 100000) return null;
+    const score = Number.isInteger(data.score) ? data.score : allHands(cards).total;
+    const name = typeof data.name === 'string' ? data.name.trim().slice(0, 40) : '';
+    const id = typeof data.id === 'string' && data.id ? data.id : `setup-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const savedAt = Number.isFinite(data.savedAt) ? data.savedAt : Date.now();
     return {
-      version: 1,
+      id,
+      name,
+      savedAt,
+      score,
+      version: 2,
       seed: data.seed,
       customCards: custom,
       board: cards,
@@ -667,18 +671,57 @@
     };
   }
 
-  function readSetup() {
+  function serializeSetup(setup) {
+    return {
+      id: setup.id,
+      name: setup.name,
+      savedAt: setup.savedAt,
+      score: setup.score,
+      version: 2,
+      seed: setup.seed,
+      customCards: setup.customCards ? setup.customCards.map(serializeCard) : null,
+      board: setup.board.map(serializeCard),
+      swaps: setup.swaps,
+      moveText: setup.moveText
+    };
+  }
+
+  function writeSetups(list) {
+    memorySetups = list.map(serializeSetup).map(normalizeSetup).filter(Boolean);
     try {
-      const raw = sessionStorage.getItem(SETUP_KEY);
+      sessionStorage.setItem(SETUPS_KEY, JSON.stringify({ version: 2, items: memorySetups.map(serializeSetup) }));
+      sessionStorage.removeItem(LEGACY_SETUP_KEY);
+    } catch (error) { /* keep the in-memory list for this page */ }
+  }
+
+  function readSetups() {
+    try {
+      const raw = sessionStorage.getItem(SETUPS_KEY);
       if (raw) {
-        const setup = normalizeSetup(JSON.parse(raw));
-        if (setup) return setup;
-        sessionStorage.removeItem(SETUP_KEY);
+        const data = JSON.parse(raw);
+        const items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+        const list = items.map(normalizeSetup).filter(Boolean);
+        if (list.length || (Array.isArray(data?.items) && data.items.length === 0)) {
+          memorySetups = list;
+          return list;
+        }
+      }
+      const legacy = sessionStorage.getItem(LEGACY_SETUP_KEY);
+      if (legacy) {
+        const migrated = normalizeSetup(JSON.parse(legacy));
+        if (migrated) {
+          writeSetups([migrated]);
+          return memorySetups.slice();
+        }
+        sessionStorage.removeItem(LEGACY_SETUP_KEY);
       }
     } catch (error) {
-      try { sessionStorage.removeItem(SETUP_KEY); } catch (ignore) { /* storage unavailable */ }
+      try {
+        sessionStorage.removeItem(SETUPS_KEY);
+        sessionStorage.removeItem(LEGACY_SETUP_KEY);
+      } catch (ignore) { /* storage unavailable */ }
     }
-    return memorySetup;
+    return memorySetups.slice();
   }
 
   function sameSetup(setup) {
@@ -688,38 +731,99 @@
     return board.every((card, index) => cardKey(card) === cardKey(setup.board[index]));
   }
 
-  function saveSetup() {
-    if (busy || board.length !== 25) return;
-    const payload = {
-      version: 1,
+  function defaultSetupName(score, swapCount) {
+    return `${score.toLocaleString()} · ${formatSwaps(swapCount)}`;
+  }
+
+  function setupMeta(setup) {
+    const deal = `${setup.customCards ? 'DEV' : 'DEAL'} ${setup.seed}`;
+    return `${deal} · ${setup.score.toLocaleString()} pts · ${formatSwaps(setup.swaps)}`;
+  }
+
+  function openSetupsDialog() {
+    if (busy) return;
+    $('setup-name').value = '';
+    renderSetupsList();
+    setDialogOpen($('setups-dialog'), true);
+    $('setup-name').focus();
+  }
+
+  function renderSetupsList() {
+    const list = readSetups();
+    const host = $('setups-list');
+    $('setups-count').textContent = String(list.length);
+    host.replaceChildren();
+    if (list.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'setups-empty';
+      empty.textContent = 'No setups saved in this tab yet.';
+      host.append(empty);
+      return;
+    }
+    for (const setup of list) {
+      const item = document.createElement('div');
+      item.className = `setups-item${sameSetup(setup) ? ' is-current' : ''}`;
+      item.setAttribute('role', 'listitem');
+      const copy = document.createElement('div');
+      copy.className = 'setups-item-copy';
+      const title = document.createElement('div');
+      title.className = 'setups-item-name';
+      title.textContent = setup.name || defaultSetupName(setup.score, setup.swaps);
+      const meta = document.createElement('div');
+      meta.className = 'setups-item-meta';
+      meta.textContent = setupMeta(setup);
+      copy.append(title, meta);
+      const actions = document.createElement('div');
+      actions.className = 'setups-item-actions';
+      const load = document.createElement('button');
+      load.type = 'button';
+      load.className = 'setups-load';
+      load.textContent = sameSetup(setup) ? 'Current' : 'Load';
+      load.disabled = sameSetup(setup);
+      load.addEventListener('click', () => loadSetup(setup.id));
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'setups-delete';
+      remove.textContent = 'Delete';
+      remove.addEventListener('click', () => deleteSetup(setup.id));
+      actions.append(load, remove);
+      item.append(copy, actions);
+      host.append(item);
+    }
+  }
+
+  function saveCurrentSetup(name = '') {
+    if (busy || board.length !== 25) return false;
+    const score = allHands(board).total;
+    const payload = normalizeSetup({
+      id: `setup-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      name: name.trim(),
+      savedAt: Date.now(),
+      score,
+      version: 2,
       seed,
       customCards: customCards ? customCards.map(serializeCard) : null,
       board: board.map(serializeCard),
       swaps,
-      moveText: moveLabelFor(swaps, $('move-label').textContent)
-    };
-    const normalized = normalizeSetup(payload);
-    if (!normalized) return;
-    memorySetup = normalized;
-    let stored = false;
-    try {
-      sessionStorage.setItem(SETUP_KEY, JSON.stringify(payload));
-      stored = true;
-    } catch (error) { /* keep the in-memory copy for this page */ }
+      moveText: displayedMoveText()
+    });
+    if (!payload) return false;
+    const list = readSetups().filter((entry) => !sameSetup(entry));
+    list.unshift(payload);
+    writeSetups(list.slice(0, SETUPS_LIMIT));
     updateHistoryUI();
-    announceHistory(stored ? 'Saved for this tab.' : 'Saved until you refresh this page.');
+    return true;
   }
 
-  function loadSetup() {
+  function loadSetup(id) {
     if (busy) return;
-    const setup = readSetup();
+    const setup = readSetups().find((entry) => entry.id === id);
     if (!setup) {
-      announceHistory('No setup saved in this tab.');
-      updateHistoryUI();
+      renderSetupsList();
       return;
     }
     if (!sameSetup(setup)) pushHistory('load');
-    const previousId = board.length === 25 ? cardSetId(board) : '';
+    endPreview();
     seed = setup.seed;
     customCards = setup.customCards ? setup.customCards.slice() : null;
     board = setup.board.slice();
@@ -730,32 +834,36 @@
     moveGuideVisible = false;
     $('move-label').textContent = setup.moveText;
     $('seed-label').textContent = seedText();
-    const id = cardSetId(board);
+    const idCards = cardSetId(board);
     $('guide-button').hidden = true;
-    if (previousId !== id || !solverSession || solverSession.cardSetId !== id) {
-      if (solverSession && solverSession.cardSetId !== id) resetSolverSession();
+    if (solverSession && solverSession.cardSetId !== idCards) resetSolverSession();
+    if (solverSession && solverSession.cardSetId === idCards) {
+      $('apply-button').hidden = solverSession.score <= allHands(board).total;
+    } else {
       $('apply-button').hidden = true;
       $('progress-track').hidden = true;
-      $('solver-status').textContent = 'Loaded the setup saved in this tab.';
-    } else {
-      $('apply-button').hidden = solverSession.score <= allHands(board).total;
-      $('solver-status').textContent = gridStatus('Loaded the setup saved in this tab.');
-      updateSessionUI();
+      $('solver-status').textContent = 'The solver searches for a higher-scoring grid.';
     }
+    updateSessionUI();
     render();
     updateHistoryUI();
-    announceHistory('Loaded the setup saved in this tab.');
+    renderSetupsList();
+  }
+
+  function deleteSetup(id) {
+    writeSetups(readSetups().filter((entry) => entry.id !== id));
+    updateHistoryUI();
+    renderSetupsList();
   }
 
   function updateHistoryUI() {
-    const saved = readSetup();
+    const count = readSetups().length;
     $('undo-button').disabled = busy || undoStack.length === 0;
     $('redo-button').disabled = busy || redoStack.length === 0;
-    $('save-button').disabled = busy;
-    $('load-button').disabled = busy || !saved;
-    $('load-button').title = saved
-      ? `Load ${saved.customCards ? 'DEV' : 'DEAL'} ${saved.seed} saved in this tab`
-      : 'No setup saved in this tab yet';
+    $('setups-button').disabled = busy;
+    $('setups-button').title = count
+      ? `Saved grids for this tab · ${count} setup${count === 1 ? '' : 's'} (Ctrl+S)`
+      : 'Saved grids for this tab (Ctrl+S)';
   }
 
   function isTypingTarget(target) {
@@ -780,6 +888,7 @@
 
   function swapCards(first, second) {
     if (busy || applyPreview || first === second) return;
+    pushHistory('move');
     [board[first], board[second]] = [board[second], board[first]];
     selected = -1;
     swaps++;
@@ -789,7 +898,7 @@
     $('apply-button').hidden = session.score <= currentScore;
     $('guide-button').hidden = true;
     $('solver-status').textContent = `Grid changed. Session best remains ${session.score.toLocaleString()} points.`;
-    $('move-label').textContent = `${swaps} swap${swaps === 1 ? '' : 's'}`;
+    $('move-label').textContent = formatSwaps(swaps);
     render();
     updateSessionUI();
   }
@@ -976,9 +1085,8 @@
   applyButton.addEventListener('click', () => {
     if (!solverBest || busy) return;
     const next = applyPreviewTarget || closestEquivalentArrangement(board, solverBest);
-    applyPreview = false;
-    applyPreviewTarget = null;
-    document.querySelector('.board-wrap')?.classList.remove('is-previewing');
+    pushHistory('move');
+    endPreview();
     board = next.board;
     selected = -1;
     moveGuideVisible = false;
@@ -1003,24 +1111,38 @@
   });
   $('undo-button').addEventListener('click', undoMove);
   $('redo-button').addEventListener('click', redoMove);
-  $('save-button').addEventListener('click', saveSetup);
-  $('load-button').addEventListener('click', loadSetup);
+  $('setups-button').addEventListener('click', openSetupsDialog);
+  $('setups-close').addEventListener('click', () => setDialogOpen($('setups-dialog'), false));
+  $('setups-form').addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (!saveCurrentSetup($('setup-name').value)) return;
+    $('setup-name').value = '';
+    renderSetupsList();
+  });
   document.addEventListener('keydown', (event) => {
     if (event.defaultPrevented || busy) return;
-    if (document.querySelector('dialog[open]')) return;
-    if (isTypingTarget(event.target)) return;
     const key = event.key.toLowerCase();
     const command = event.ctrlKey || event.metaKey;
     if (!command || event.altKey) return;
+    if (key === 's' && !event.shiftKey) {
+      event.preventDefault();
+      if ($('setups-dialog').open) {
+        if (!saveCurrentSetup($('setup-name').value)) return;
+        $('setup-name').value = '';
+        renderSetupsList();
+      } else if (!document.querySelector('dialog[open]') && !isTypingTarget(event.target)) {
+        openSetupsDialog();
+      }
+      return;
+    }
+    if (document.querySelector('dialog[open]')) return;
+    if (isTypingTarget(event.target)) return;
     if (key === 'z' && !event.shiftKey) {
       event.preventDefault();
       undoMove();
     } else if (key === 'y' || (key === 'z' && event.shiftKey)) {
       event.preventDefault();
       redoMove();
-    } else if (key === 's' && !event.shiftKey) {
-      event.preventDefault();
-      saveSetup();
     }
   });
   $('new-deal').addEventListener('click', () => deal((Math.random() * 0xffffffff) >>> 0));
