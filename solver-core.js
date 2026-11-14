@@ -74,7 +74,91 @@
     state.total = undo.oldTotal;
   }
 
-  const api = { evaluateHand, createSearchState, applyCycle, undoCycle };
+  // 5! row orders and 5! column orders. Row and column order do not change the
+  // score, so the swap distance that matters is the minimum over this group.
+  const rowColOrders = new Uint8Array(120 * 5);
+  {
+    const used = [false, false, false, false, false];
+    const current = [0, 0, 0, 0, 0];
+    let cursor = 0;
+    const walk = (depth) => {
+      if (depth === 5) {
+        rowColOrders.set(current, cursor);
+        cursor += 5;
+        return;
+      }
+      for (let value = 0; value < 5; value++) {
+        if (used[value]) continue;
+        used[value] = true;
+        current[depth] = value;
+        walk(depth + 1);
+        used[value] = false;
+      }
+    };
+    walk(0);
+  }
+
+  const arrangementNext = new Uint8Array(25);
+
+  // `target[i]` is the position, on the reference grid, of the card sitting at
+  // i. A k-cycle needs k − 1 swaps, so the swap count is 25 minus the number
+  // of cycles, fixed points included.
+  function swapsForPlacedCards(target) {
+    let bestCycles = 0;
+    for (let rowIndex = 0; rowIndex < 120; rowIndex++) {
+      const row = rowIndex * 5;
+      const row0 = rowColOrders[row] * 5;
+      const row1 = rowColOrders[row + 1] * 5;
+      const row2 = rowColOrders[row + 2] * 5;
+      const row3 = rowColOrders[row + 3] * 5;
+      const row4 = rowColOrders[row + 4] * 5;
+      for (let columnIndex = 0; columnIndex < 120; columnIndex++) {
+        const column = columnIndex * 5;
+        const column0 = rowColOrders[column];
+        const column1 = rowColOrders[column + 1];
+        const column2 = rowColOrders[column + 2];
+        const column3 = rowColOrders[column + 3];
+        const column4 = rowColOrders[column + 4];
+        arrangementNext[0] = target[row0 + column0]; arrangementNext[1] = target[row0 + column1]; arrangementNext[2] = target[row0 + column2]; arrangementNext[3] = target[row0 + column3]; arrangementNext[4] = target[row0 + column4];
+        arrangementNext[5] = target[row1 + column0]; arrangementNext[6] = target[row1 + column1]; arrangementNext[7] = target[row1 + column2]; arrangementNext[8] = target[row1 + column3]; arrangementNext[9] = target[row1 + column4];
+        arrangementNext[10] = target[row2 + column0]; arrangementNext[11] = target[row2 + column1]; arrangementNext[12] = target[row2 + column2]; arrangementNext[13] = target[row2 + column3]; arrangementNext[14] = target[row2 + column4];
+        arrangementNext[15] = target[row3 + column0]; arrangementNext[16] = target[row3 + column1]; arrangementNext[17] = target[row3 + column2]; arrangementNext[18] = target[row3 + column3]; arrangementNext[19] = target[row3 + column4];
+        arrangementNext[20] = target[row4 + column0]; arrangementNext[21] = target[row4 + column1]; arrangementNext[22] = target[row4 + column2]; arrangementNext[23] = target[row4 + column3]; arrangementNext[24] = target[row4 + column4];
+        let mask = 0;
+        let cycles = 0;
+        let aborted = false;
+        for (let index = 0; index < 25; index++) {
+          const bit = 1 << index;
+          if (mask & bit) continue;
+          let position = index;
+          do {
+            mask |= 1 << position;
+            position = arrangementNext[position];
+          } while ((mask & (1 << position)) === 0);
+          cycles++;
+          // Remaining positions cannot add enough cycles to beat the best layout.
+          if (cycles + 24 - index <= bestCycles) { aborted = true; break; }
+        }
+        if (!aborted && cycles > bestCycles) bestCycles = cycles;
+      }
+    }
+    return 25 - bestCycles;
+  }
+
+  function cardIdentity(card) { return `${card.rank}:${card.suit}`; }
+
+  // Counts the fewest swaps from `reference` to any row/column rearrangement of
+  // a later grid. The reference grid is fixed for the whole search.
+  function createSwapCounter(reference) {
+    const identity = new Map(reference.map((card, index) => [cardIdentity(card), index]));
+    const placed = new Uint8Array(25);
+    return (cards) => {
+      for (let index = 0; index < 25; index++) placed[index] = identity.get(cardIdentity(cards[index]));
+      return swapsForPlacedCards(placed);
+    };
+  }
+
+  const api = { evaluateHand, createSearchState, applyCycle, undoCycle, createSwapCounter };
   if (typeof module !== 'undefined') module.exports = api;
   else window.SudokerSolver = api;
 })();

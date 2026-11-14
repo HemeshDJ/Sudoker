@@ -22,7 +22,7 @@ The `Deploy GitHub Pages` workflow publishes the static app whenever changes are
 
 ## Solver
 
-The solver uses simulated annealing with multiple restarts, swaps, and three-card cycles. It caches the affected row and column scores for each move instead of rescoring the whole grid. The best arrangement is retained as a per-deal solver session, so further searches improve on the prior best even if you rearrange the visible grid. The session resets only for a new deal or a different custom card set. Forever mode uses the same loop until stopped; it retains only the current and best 25-card arrangements, so memory use remains bounded. This is a heuristic search, not a proof of the globally optimal arrangement.
+The solver uses simulated annealing with multiple restarts, swaps, and three-card cycles. It caches the affected row and column scores for each move instead of rescoring the whole grid. The best arrangement is retained as a per-deal solver session, so further searches improve on the prior best even if you rearrange the visible grid. Score comes first; when two arrangements tie, the session keeps the one the current grid can reach in fewer swaps, and the minimum-move guide follows that arrangement. The session resets only for a new deal or a different custom card set. Forever mode uses the same loop until stopped; it retains only the current and best 25-card arrangements, so memory use remains bounded. This is a heuristic search, not a proof of the globally optimal arrangement.
 
 ## Hand ranks
 

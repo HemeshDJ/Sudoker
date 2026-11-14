@@ -128,8 +128,14 @@
     return solverSession;
   }
 
-  function setIncumbent(session, candidate, score) {
-    if (score <= session.score) return false;
+  // Score is the primary key. On a tie, the arrangement that needs fewer swaps
+  // from the grid being solved replaces the incumbent. `measureSwaps` is omitted
+  // only by callers that are not allowed to break a tie.
+  function setIncumbent(session, candidate, score, measureSwaps) {
+    if (score < session.score) return false;
+    if (score === session.score) {
+      if (!measureSwaps || measureSwaps(candidate) >= measureSwaps(session.incumbent)) return false;
+    }
     session.incumbent = candidate.slice();
     session.score = score;
     solverBest = session.incumbent;
@@ -975,13 +981,20 @@
     const original = board.slice();
     const originalScore = allHands(original).total;
     const session = ensureSolverSession();
-    setIncumbent(session, original, originalScore);
+    const measureSwaps = window.SudokerSolver.createSwapCounter(original);
+    // The visible grid is zero swaps away, so it wins a tie with the stored best.
+    setIncumbent(session, original, originalScore, measureSwaps);
     const effort = Number($('effort').value);
     const endless = effort === 4;
     const budget = effortBudgets[effort === 4 ? 3 : effort];
     const random = resumableRandom(session.rngState);
     let best = session.incumbent.slice();
     let bestScore = session.score;
+    let bestSwaps = measureSwaps(best);
+    // Lower bound on how many swaps the annealing board still needs. A 2-swap
+    // moves it by at most 1 and a 3-cycle by at most 2, so a bound that already
+    // meets the record can skip the exact count.
+    let swapLower = mode === 'continue' ? bestSwaps : 0;
     let currentState = window.SudokerSolver.createSearchState(mode === 'continue' ? best : original);
     const restarts = 4;
     const perRestart = Math.floor(budget / restarts);
@@ -995,19 +1008,40 @@
         if (restart > 0) {
           currentState = window.SudokerSolver.createSearchState(restartBoard(best, original, restart, random));
           plateau = 0;
+          swapLower = measureSwaps(currentState.board);
+          if (currentState.total > bestScore) {
+            bestScore = currentState.total;
+            best = currentState.board.slice();
+            bestSwaps = swapLower;
+          } else if (currentState.total === bestScore && swapLower < bestSwaps) {
+            bestSwaps = swapLower;
+            best = currentState.board.slice();
+          }
         }
         for (let step = 0; step < perRestart && !stopRequested; step++) {
           const progress = step / perRestart;
           const reheating = plateau > perRestart / 3 ? 2.2 : 1;
           const temperature = (105 * Math.pow(0.7, progress * 8) + 0.7) * reheating;
-          const undo = window.SudokerSolver.applyCycle(currentState, chooseMove(currentState, random));
+          const move = chooseMove(currentState, random);
+          const undo = window.SudokerSolver.applyCycle(currentState, move);
           const candidateScore = currentState.total;
           const delta = candidateScore - undo.oldTotal;
           if (delta >= 0 || random() < Math.exp(delta / temperature)) {
+            swapLower = Math.max(0, swapLower - (move.length - 1));
             if (candidateScore > bestScore) {
               bestScore = candidateScore;
               best = currentState.board.slice();
+              bestSwaps = measureSwaps(best);
+              swapLower = bestSwaps;
               plateau = 0;
+            } else if (candidateScore === bestScore && swapLower < bestSwaps) {
+              const swaps = measureSwaps(currentState.board);
+              swapLower = swaps;
+              if (swaps < bestSwaps) {
+                bestSwaps = swaps;
+                best = currentState.board.slice();
+              }
+              plateau++;
             } else plateau++;
           } else {
             window.SudokerSolver.undoCycle(currentState, undo);
@@ -1026,7 +1060,8 @@
         }
         restart++;
       }
-      setIncumbent(session, best, bestScore);
+      session.incumbent = best.slice();
+      session.score = bestScore;
       session.attempts += done;
       session.runs++;
       session.rngState = random.state();
@@ -1037,7 +1072,7 @@
       $('solver-status').textContent = stopRequested
         ? `Search stopped after ${done.toLocaleString()} attempts · session best ${session.score.toLocaleString()} points.`
         : gain > 0
-          ? `Search complete · found an arrangement ${gain.toLocaleString()} points higher.`
+          ? `Search complete · found an arrangement ${gain.toLocaleString()} points higher · ${formatSwaps(bestSwaps)} from this grid.`
           : 'Search complete · no higher arrangement found in this run.';
       const displayedGain = session.score - originalScore;
       if (displayedGain > 0) {
